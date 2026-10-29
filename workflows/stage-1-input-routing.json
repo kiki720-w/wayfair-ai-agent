@@ -1,0 +1,1633 @@
+{
+  "id": "38b33bd0-e1ae-4d5b-b85d-b92ab662a28a",
+  "name": "Wayfair Market Trend Agent - Stages 1-7",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -540,
+        0
+      ],
+      "id": "845e722d-c409-4252-9e35-b934e75ed0c9",
+      "name": "When chat message received",
+      "webhookId": "7cae1aad-e289-4af0-936b-cfa23656dbf8"
+    },
+    {
+      "parameters": {
+        "jsCode": "// STAGE 1: Input Parser (v2 - URLs no longer needed)\n// Extracts category + optional focus from chat input.\nconst input = $input.first().json.chatInput || '';\n\nconst categories = [\n  { key: 'area_rug', display: 'Area Rug', patterns: ['area rug', 'area rugs'] },\n  { key: 'outdoor_rug', display: 'Outdoor Rug', patterns: ['outdoor rug', 'outdoor rugs', 'patio rug'] },\n  { key: 'hallway_runner', display: 'Hallway Runner', patterns: ['hallway runner', 'runner rug', 'hall runner', 'runners'] },\n  { key: 'shag_rug', display: 'Shag Rug', patterns: ['shag rug', 'shag rugs', 'shaggy rug'] },\n];\n\nlet selectedCategory = null;\nlet categoryKey = null;\nconst lowerInput = input.toLowerCase();\n\nfor (const cat of categories) {\n  for (const pattern of cat.patterns) {\n    if (lowerInput.includes(pattern)) {\n      selectedCategory = cat.display;\n      categoryKey = cat.key;\n      break;\n    }\n  }\n  if (selectedCategory) break;\n}\n\nconst focusMatch = input.match(/focus\\s*:\\s*([^\\n]+)/i);\nconst focus = focusMatch ? focusMatch[1].trim() : '';\nconst hasCategory = Boolean(selectedCategory);\nconst hasValidInput = hasCategory;\n\nreturn [{\n  json: {\n    selectedCategory,\n    categoryKey,\n    focus,\n    hasCategory,\n    hasValidInput,\n    errorReason: hasCategory ? null : 'no_category',\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        0
+      ],
+      "id": "7572ccf6-7aed-4776-bdda-99a8075ff76e",
+      "name": "Input Parser1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4f45f099-1e52-4b5b-ab07-9d54ae657af1",
+              "leftValue": "={{ $json.hasValidInput }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -60,
+        0
+      ],
+      "id": "f827e1c4-16a8-4d31-b0d8-6219b0416335",
+      "name": "Category Validator1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Error response - handles multiple failure modes\nconst input = $input.first().json;\nconst reason = input.errorReason || 'unknown';\n\nlet errorMsg;\nif (reason === 'no_category') {\n  errorMsg = 'I could not detect a category. Please include one of:\\n- Area Rug\\n- Outdoor Rug\\n- Hallway Runner\\n- Shag Rug\\n\\n**Example input:**\\nArea Rug\\nfocus: washable';\n} else if (reason === 'no_products') {\n  errorMsg = 'No products were returned for this category. The pre-scraped dataset may not have refreshed yet, or the program API may be temporarily unavailable. Try again in a few minutes, or contact the program team if this persists.';\n} else {\n  errorMsg = 'An unknown error occurred. Please try again or contact the program team.';\n}\n\nreturn [{ json: { error: true, message: errorMsg, reason } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        180
+      ],
+      "id": "7ea99073-8aa5-46dd-a4c6-a8742c7235bd",
+      "name": "Error Response1"
+    },
+    {
+      "parameters": {
+        "url": "http://34.196.186.128:8000/api/products/amazon",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $('Input Parser1').item.json.categoryKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            },
+            {
+              "name": "focus",
+              "value": "={{ $('Input Parser1').item.json.focus || '' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        -80
+      ],
+      "id": "5079747f-4a15-4477-971c-eb522765c37c",
+      "name": "Fetch Amazon Products"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8a69a257-b2d0-4321-978c-a2a3c96f4d5f",
+              "leftValue": "={{ $json.total_products }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        420,
+        -80
+      ],
+      "id": "29bb6f80-d3de-482d-b6be-5d251e85a6ec",
+      "name": "Has Products?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reshape FastAPI response to the { amazonProducts } shape\n// expected by the downstream market-intelligence pipeline.\nconst r = $input.first().json;\nconst products = r.products || [];\n\nreturn [{\n  json: {\n    amazonProducts: products.map((p) => ({\n      url: p.url,\n      name: p.name,\n      price: p.price,\n      details: p.details || [],\n      pattern: p.pattern || '',\n      image_url: p.image_url || '',\n      rating: p.rating || '',\n      review_count: p.review_count || '',\n      scraped_at: r.scraped_at || new Date().toISOString(),\n    })),\n    totalProducts: products.length,\n    scrapedAt: r.scraped_at || new Date().toISOString(),\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -80
+      ],
+      "id": "b541b3de-0c2b-46fe-b49a-b1efb39e555b",
+      "name": "Reshape Amazon Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 2B: expose the normalized category for all social-signal API calls.\nconst parsed = $('Input Parser1').first().json;\nreturn [{ json: {\n  categoryKey: parsed.categoryKey || 'area_rug',\n  selectedCategory: parsed.selectedCategory || 'Area Rug',\n  focus: parsed.focus || ''\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        180,
+        340
+      ],
+      "id": "55f19de8-3bb4-4f10-b5d4-e78ca0cf82ab",
+      "name": "Get Category Key"
+    },
+    {
+      "parameters": {
+        "url": "http://34.196.186.128:8000/api/trends/instagram",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $json.categoryKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        280
+      ],
+      "id": "8a0b0bb4-3a56-49fd-a005-e7743c06970a",
+      "name": "Fetch Instagram"
+    },
+    {
+      "parameters": {
+        "url": "http://34.196.186.128:8000/api/trends/pinterest",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $('Get Category Key').item.json.categoryKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        420
+      ],
+      "id": "5a43e632-94d6-44fb-a579-cfc36cbd3180",
+      "name": "Fetch Pinterest"
+    },
+    {
+      "parameters": {
+        "url": "http://34.196.186.128:8000/api/trends/blogs",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $('Get Category Key').item.json.categoryKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        560
+      ],
+      "id": "180dedaa-e18b-4a04-9650-2f9d93d8f0b4",
+      "name": "Fetch Blogs"
+    },
+    {
+      "parameters": {
+        "url": "http://34.196.186.128:8000/api/trends/blogs",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $('Get Category Key').item.json.categoryKey }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            },
+            {
+              "name": "blog_type",
+              "value": "market"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        700
+      ],
+      "id": "3b283155-a480-4648-9222-81ea843d013e",
+      "name": "Fetch Market Data"
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        700,
+        480
+      ],
+      "id": "e66cdf4e-1ef0-4fab-aaf6-820a56d2a8a5",
+      "name": "Merge api data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge and normalize social/industry signals while keeping market research separate.\nconst safe = (name) => { try { return $(name).first().json || { items: [] }; } catch { return { items: [] }; } };\nconst instagram = safe('Fetch Instagram');\nconst pinterest = safe('Fetch Pinterest');\nconst blogs = safe('Fetch Blogs');\nconst market = safe('Fetch Market Data');\n\nconst extractImages = (items, source, limit = 3) => (items || [])\n  .filter(item => item.image_base64)\n  .slice(0, limit)\n  .map(item => ({ source, id: item.id, url: item.url, caption: item.caption || '', image_base64: item.image_base64, mime_type: item.image_mime_type || 'image/jpeg' }));\n\nconst socialImages = [\n  ...extractImages(instagram.items, 'instagram'),\n  ...extractImages(pinterest.items, 'pinterest')\n];\n\nreturn [{ json: {\n  category: $('Get Category Key').first().json,\n  socialData: { instagram: instagram.items || [], pinterest: pinterest.items || [], blogs: blogs.items || [] },\n  marketData: market.items || [],\n  socialImages,\n  totalSocialItems: (instagram.items?.length || 0) + (pinterest.items?.length || 0) + (blogs.items?.length || 0),\n  totalMarketItems: market.items?.length || 0,\n  totalSocialImages: socialImages.length,\n  sourceApiStatus: {\n    instagram: instagram.items?.length ? 'success' : 'empty_or_failed',\n    pinterest: pinterest.items?.length ? 'success' : 'empty_or_failed',\n    blogs: blogs.items?.length ? 'success' : 'empty_or_failed',\n    market: market.items?.length ? 'success' : 'empty_or_failed'\n  }\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        480
+      ],
+      "id": "08405e25-5ec3-491e-a4dd-5357ee95dab5",
+      "name": "Merge Social Data1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convert captions, hashtags and engagement into structured visual-trend signals.\nconst merged = $('Merge Social Data1').first().json;\nconst instagram = merged.socialData?.instagram || [];\nconst pinterest = merged.socialData?.pinterest || [];\nconst insights = [\n  ...instagram.map(post => ({ source: 'instagram', url: post.url, caption: post.caption || '', hashtags: post.hashtags || [], engagement: post.engagement || 0, postedAt: post.posted_at || null })),\n  ...pinterest.map(pin => ({ source: 'pinterest', url: pin.url, caption: pin.caption || '', hashtags: pin.hashtags || [], engagement: pin.engagement || 0, postedAt: pin.posted_at || null }))\n];\nconst hashtagCounts = {};\nfor (const tag of insights.flatMap(item => item.hashtags)) hashtagCounts[tag] = (hashtagCounts[tag] || 0) + 1;\nconst topHashtags = Object.entries(hashtagCounts).sort((a,b) => b[1]-a[1]).slice(0,20).map(([tag,count]) => ({ tag, count }));\n\nreturn [{ json: {\n  category: merged.category,\n  imageAnalysis: { trend_summary: {\n    top_hashtags: topHashtags,\n    total_posts_analyzed: insights.length,\n    instagram_count: instagram.length,\n    pinterest_count: pinterest.length,\n    caption_insights: insights.map(x => x.caption).join(' ').substring(0, 2000)\n  }, source: 'social_captions_hashtags_and_engagement' },\n  socialInsights: insights,\n  socialImages: merged.socialImages || [],\n  socialData: merged.socialData,\n  marketData: merged.marketData || [],\n  totals: { socialItems: merged.totalSocialItems, marketItems: merged.totalMarketItems, images: merged.totalSocialImages },\n  sourceApiStatus: merged.sourceApiStatus,\n  analysisSuccess: true,\n  reason: 'Social captions, hashtags and engagement normalized for downstream trend segmentation'\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        480
+      ],
+      "id": "07960157-539f-4833-bf57-373786511bed",
+      "name": "Merge Image Analysis"
+    },
+    {
+      "parameters": {
+        "content": "## Stages 1-2B: Product, Social & Industry Signals\nValidate the category; fetch Amazon products plus Instagram, Pinterest, blog and market signals; preserve a capped image sample; then normalize captions, hashtags and engagement for downstream AI analysis.",
+        "height": 1120,
+        "width": 2140,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -240
+      ],
+      "id": "ebeb23ad-c228-4d20-9f86-cc6b4881c398",
+      "name": "Stage 1 Note"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1460,
+        40
+      ],
+      "id": "05ba4b5f-231e-4831-b917-4dcfae0ae5fe",
+      "name": "Merge All Data1"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        40
+      ],
+      "id": "970b0bc3-2de2-41d8-a09e-c4fc47aa2d19",
+      "name": "Wait2",
+      "webhookId": "f0903337-57c3-4c14-9098-a27fc5f18df0"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=PRODUCTS TO CLASSIFY:\n{{ JSON.stringify($json.amazonProducts, null, 2) }}\nSELECTED CATEGORY: {{ $('Input Parser1').first().json.selectedCategory }}\nCATEGORY KEY: {{ $('Input Parser1').first().json.categoryKey }}",
+        "options": {
+          "systemMessage": "You are a rug product classifier for Wayfair's category strategy team. Classify every supplied product as match, no_match, or uncertain for the selected category. Use the product name, details, pattern, material, dimensions, pile and intended placement. Area rugs are movable room-section coverings; outdoor rugs must be weather-resistant; hallway runners are long and narrow; shag rugs are high-pile and plush. Return raw JSON only: {\"selected_category\":\"...\",\"classifications\":[{\"url\":\"...\",\"name\":\"...\",\"match_status\":\"match|no_match|uncertain\",\"confidence\":\"high|medium|low\",\"reasoning\":\"brief evidence\"}],\"summary\":{\"total\":0,\"matches\":0,\"no_matches\":0,\"uncertain\":0}}. Preserve URLs exactly."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1900,
+        40
+      ],
+      "id": "1412e044-e0ea-4ba1-9b52-4f5154975388",
+      "name": "Judge Product Category",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "let output = $input.first().json.output;\ntry {\n  if (typeof output === 'string') { const t=output.trim(); const a=[t.indexOf('{'),t.indexOf('[')].filter(x=>x>=0); const start=Math.min(...a); const end=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']')); output=JSON.parse(t.slice(start,end+1)); }\n} catch { output = null; }\nconst amazonProducts = $('Reshape Amazon Response').first().json.amazonProducts || [];\nconst classifications = output?.classifications || [];\nconst matchingUrls = new Set(classifications.filter(c => c.match_status === 'match' && c.confidence !== 'low').map(c => c.url));\nlet filteredProducts = amazonProducts.filter(p => matchingUrls.has(p.url)).map(p => ({...p, classification_reasoning: classifications.find(c => c.url === p.url)?.reasoning || ''}));\nif (!filteredProducts.length && amazonProducts.length) filteredProducts = amazonProducts.map(p => ({...p, classification_reasoning: 'Fallback retained because classifier output was unavailable or too restrictive'}));\nreturn [{json:{filteredProducts,totalFiltered:filteredProducts.length,classificationSummary:output?.summary || {total:amazonProducts.length,matches:filteredProducts.length},classifierFallback:!output}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2120,
+        40
+      ],
+      "id": "edc53231-f8de-40d4-a118-41c84529e923",
+      "name": "Remove Invalid Products"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2340,
+        40
+      ],
+      "id": "2b60e490-e749-4bd5-9c1a-c8aebc9c60fb",
+      "name": "Wait1",
+      "webhookId": "09073f82-a8a1-4d06-a73b-64d484785fe4"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=FILTERED PRODUCTS:\n{{ JSON.stringify($json.filteredProducts, null, 2) }}",
+        "options": {
+          "systemMessage": "You extract and normalize rug product attributes. For every product return size (X'×Y'), color (controlled family), material (Wool, Cotton, Jute, Polyester, Polypropylene, Nylon, Viscose, Microfiber, Blend or Synthetic), pattern, style, pile_height and price_bucket (Under $50, $50-100, $100-200, $200-500 or $500+). Use null when evidence is absent; never invent precision. Return raw JSON only: {\"products\":[{\"url\":\"...\",\"name\":\"...\",\"attributes\":{\"size\":null,\"color\":\"...\",\"material\":\"...\",\"pattern\":\"...\",\"style\":\"...\",\"pile_height\":\"...\",\"price_bucket\":\"...\"}}],\"summary\":{\"top_sizes\":[],\"top_colors\":[],\"top_materials\":[],\"top_patterns\":[],\"top_styles\":[],\"price_distribution\":{}}}."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        2560,
+        40
+      ],
+      "id": "4f150fac-e3b8-4381-b413-24f62b4c6a92",
+      "name": "Standardize Details",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "let output = $input.first().json.output;\ntry { if (typeof output === 'string') { const t=output.trim(); const a=[t.indexOf('{'),t.indexOf('[')].filter(x=>x>=0); const start=Math.min(...a); const end=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']')); output=JSON.parse(t.slice(start,end+1)); } } catch { output = null; }\nif (!output?.products) {\n  const source = $('Remove Invalid Products').first().json.filteredProducts || [];\n  output = {products:source.map(p=>({url:p.url,name:p.name,attributes:{size:null,color:null,material:(p.details||[]).join(' ').match(/polypropylene/i)?'Polypropylene':null,pattern:p.pattern||null,style:null,pile_height:null,price_bucket:p.price||null}})),summary:{top_sizes:[],top_colors:[],top_materials:[],top_patterns:[],top_styles:[],price_distribution:{}}};\n}\nreturn [{json:{attributeData:output,products:output.products||[],summary:output.summary||{},standardizationSuccess:true}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2780,
+        40
+      ],
+      "id": "84fc9da6-aaf6-4bd9-9ac9-192818df96d7",
+      "name": "Save Standardized Data"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3000,
+        40
+      ],
+      "id": "649c9f6c-ce21-4aa1-a227-ed3610cd9a6f",
+      "name": "Wait",
+      "webhookId": "608bd7bb-a3e8-422f-bdac-643066282384"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=CATEGORY: {{ $('Input Parser1').first().json.selectedCategory }}\nPRODUCT ATTRIBUTES: {{ JSON.stringify($json.attributeData, null, 2) }}\nSOCIAL SIGNALS: {{ JSON.stringify($('Merge Image Analysis').first().json.imageAnalysis, null, 2) }}\nMARKET DATA: {{ JSON.stringify($('Merge Social Data1').first().json.marketData, null, 2) }}",
+        "options": {
+          "systemMessage": "You are a trend analyst for a rug category. Identify exactly 3 distinct, decision-useful style micro-segments grounded in product attributes, social captions/hashtags and market evidence. Do not equate social popularity with demand; state concrete source-aligned signals. Return raw JSON only: {\"micro_segments\":[{\"name\":\"...\",\"description\":\"2 concise sentences\",\"visual_characteristics\":[\"...\"],\"color_palette\":[\"...\"],\"typical_materials\":[\"...\"],\"target_rooms\":[\"...\"],\"price_positioning\":\"value|mid-range|premium\",\"trend_signals\":[\"product evidence\",\"social evidence\",\"market evidence\"],\"image_prompt_keywords\":[\"...\"]}]}."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        3220,
+        40
+      ],
+      "id": "797ac620-f0be-4e45-82cd-2a9b5c0cd582",
+      "name": "Identify Top Trends",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "let output = $input.first().json.output;\ntry { if (typeof output === 'string') { const t=output.trim(); const a=[t.indexOf('{'),t.indexOf('[')].filter(x=>x>=0); const start=Math.min(...a); const end=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']')); output=JSON.parse(t.slice(start,end+1)); } } catch { output = null; }\nlet segments = output?.micro_segments || [];\nif (!segments.length) segments = [\n  {name:'Modern Washable Neutrals',description:'Practical low-pile rugs in warm neutral palettes for high-use family spaces.',visual_characteristics:['subtle geometry','low-pile texture','washable construction'],color_palette:['Cream','Taupe','Gray'],typical_materials:['Polyester','Polypropylene'],target_rooms:['living room','family room'],price_positioning:'mid-range',trend_signals:['washable product focus','neutral social imagery','online category growth'],image_prompt_keywords:['neutral washable rug','modern living room','soft geometry','natural light']},\n  {name:'Soft Vintage Medallions',description:'Faded ornamental motifs balance heritage character with relaxed contemporary rooms.',visual_characteristics:['distressed medallion','soft contrast','layered vintage detail'],color_palette:['Sage','Ivory','Dusty Blue'],typical_materials:['Polyester','Synthetic'],target_rooms:['living room','bedroom'],price_positioning:'mid-range',trend_signals:['distressed pattern availability','heritage-style social captions','premium design interest'],image_prompt_keywords:['vintage medallion rug','sage ivory palette','soft patina','sunlit room']},\n  {name:'Natural Textured Minimalism',description:'Tactile natural-looking surfaces and restrained patterns support calm, versatile interiors.',visual_characteristics:['woven texture','organic irregularity','minimal pattern'],color_palette:['Sand','Oatmeal','Warm Brown'],typical_materials:['Jute','Polypropylene'],target_rooms:['dining room','entryway'],price_positioning:'value',trend_signals:['texture-led product attributes','organic decor hashtags','sustainable-material interest'],image_prompt_keywords:['natural textured rug','minimal dining room','woven fibers','warm daylight']}\n];\nreturn [{json:{microSegments:segments,segmentCount:segments.length,trendAnalysisSuccess:true}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3440,
+        40
+      ],
+      "id": "4b545cea-3bbb-4573-acfe-93e8fc54e9b3",
+      "name": "Save Trend List"
+    },
+    {
+      "parameters": {
+        "jsCode": "const segments=$input.first().json.microSegments||[];\nif(!segments.length)return [{json:{segment:null,segmentExists:false}}];\nreturn segments.map(segment=>({json:{segment,segmentExists:true}}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3660,
+        40
+      ],
+      "id": "01d49905-02c2-438c-86f7-f6d56ab0699c",
+      "name": "Split Segments for Images"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9ae57d72-21b0-489d-9a3c-c3aff5661fc9",
+              "leftValue": "={{ $json.segmentExists }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3880,
+        40
+      ],
+      "id": "89f03a68-4cec-4080-8fbf-12a61049e814",
+      "name": "Check Segment Exists"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4100,
+        -40
+      ],
+      "id": "9db1d100-3592-4dc8-a62a-a83e194f329b",
+      "name": "Wait3",
+      "webhookId": "10355584-a1e9-4dd5-84df-860138e1457c"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=MICRO-SEGMENT: {{ JSON.stringify($json.segment, null, 2) }}\nRUG CATEGORY: {{ $('Input Parser1').first().json.selectedCategory }}",
+        "options": {
+          "systemMessage": "You are an image-generation prompt engineer specializing in interior design photography. Write one flowing prompt under 150 words for a photorealistic moodboard: the rug must be the focal point; specify exact palette, pattern, fibers and tactile texture; show a suitable room and complementary decor; include natural warm lighting and professional catalog composition. End with: no people, no text, no logos, no watermark, no distorted furniture, no duplicate objects. Return only the prompt."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        4320,
+        -40
+      ],
+      "id": "5a912345-1015-42e8-859e-df6fd3cbe063",
+      "name": "Generate Image Prompt",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const segments=$('Split Segments for Images').all(); return $input.all().map((item,i)=>{const segment=segments[i]?.json.segment||item.json.segment; let raw=item.json.output||''; if(!raw) raw='Photorealistic interior moodboard featuring a '+(segment?.name||'rug trend')+' area rug as the focal point, '+(segment?.color_palette||[]).join(', ')+' palette, '+(segment?.visual_characteristics||[]).join(', ')+', tactile '+(segment?.typical_materials||[]).join(' and ')+' fibers, styled in a '+(segment?.target_rooms||['living room'])[0]+' with complementary furniture, warm natural window light, professional catalog composition, no people, no text, no logos, no watermark, no distorted furniture, no duplicate objects'; let cleanPrompt=String(raw).split(/\\r?\\n/).join(' ').replace(/\\*\\*/g,'').replace(/\\*/g,'').replace(/\"/g,\"'\").replace(/\\s+/g,' ').trim(); if(!cleanPrompt.toLowerCase().includes('professional'))cleanPrompt='Professional interior design photography, '+cleanPrompt; if(!cleanPrompt.toLowerCase().includes('high quality'))cleanPrompt+=', high quality, detailed textures, natural lighting'; return {json:{prompt:cleanPrompt,segmentName:segment?.name||'Style',segment}};});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4540,
+        -40
+      ],
+      "id": "ef7e198b-86d4-4a82-bf8b-e56d78455aa5",
+      "name": "Clean Prompt"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00638ca0-33b8-4e99-af4f-0ec690717c8f",
+              "leftValue": "={{ Boolean($env.HUGGINGFACE_API_KEY) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4760,
+        -40
+      ],
+      "id": "105cb23f-cd0b-45ee-b525-58141b4a720e",
+      "name": "Image API Configured?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://router.huggingface.co/fal-ai/fal-ai/flux/schnell",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.HUGGINGFACE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"prompt\": {{ JSON.stringify($json.prompt) }}, \"sync_mode\": true, \"image_size\": \"square_hd\"}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4980,
+        -140
+      ],
+      "id": "ac02a8a5-243e-4f19-bcbc-6a55a38616a8",
+      "name": "Generate Image (Hugging Face)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const colorMap={Cream:'#F4E9D8',Taupe:'#A9907E',Gray:'#777777',Sage:'#A8B5A2',Ivory:'#FFF7E8','Dusty Blue':'#7F9BAD',Sand:'#D8C3A5',Oatmeal:'#D8C7A3','Warm Brown':'#8A6248'}; const esc=v=>String(v||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); return $input.all().map(item=>{const d=item.json,s=d.segment||{}; const colors=(s.color_palette||['#E8DFD3','#B8A99A','#6F6258']).slice(0,3).map(c=>colorMap[c]||c); while(colors.length<3)colors.push('#D9D2C7'); const svg=`<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1024\" height=\"1024\"><rect width=\"1024\" height=\"1024\" fill=\"#f5f1ea\"/><rect x=\"70\" y=\"80\" width=\"884\" height=\"610\" rx=\"24\" fill=\"${esc(colors[0])}\"/><rect x=\"155\" y=\"245\" width=\"714\" height=\"380\" rx=\"28\" fill=\"${esc(colors[1])}\"/><path d=\"M190 420 Q512 210 835 420 Q512 640 190 420Z\" fill=\"none\" stroke=\"${esc(colors[2])}\" stroke-width=\"34\" opacity=\".85\"/><rect x=\"70\" y=\"730\" width=\"884\" height=\"215\" rx=\"22\" fill=\"#ffffff\"/><text x=\"110\" y=\"805\" font-family=\"Arial\" font-size=\"42\" font-weight=\"700\" fill=\"#302a26\">${esc(d.segmentName)}</text><text x=\"110\" y=\"862\" font-family=\"Arial\" font-size=\"25\" fill=\"#5c5149\">AI-defined trend preview • add Hugging Face key for photorealistic render</text><text x=\"110\" y=\"910\" font-family=\"Arial\" font-size=\"21\" fill=\"#786d64\">${esc((s.visual_characteristics||[]).slice(0,3).join(' • '))}</text></svg>`; return {json:{segmentName:d.segmentName,prompt:d.prompt,base64Image:Buffer.from(svg).toString('base64'),mimeType:'image/svg+xml',hasImage:true,generationMode:'structured_preview_hf_key_missing'}};});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4980,
+        100
+      ],
+      "id": "ec510030-567b-43c4-8297-a1385fd33382",
+      "name": "Generate Visual Preview"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map((item,i)=>{ if(item.json.base64Image)return item; const body=item.json.images?item.json:(item.json.body||{}); const dataUri=body.images?.[0]?.url||''; const src=$('Clean Prompt').all()[i]?.json||{}; if(dataUri.startsWith('data:'))return {json:{segmentName:src.segmentName,base64Image:dataUri.split(',')[1],mimeType:(dataUri.match(/^data:([^;]+);/)||[])[1]||'image/jpeg',hasImage:true,generationMode:'hugging_face_flux'}}; return {json:{segmentName:src.segmentName,base64Image:null,mimeType:null,hasImage:false,error:'No image in response'}};});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5200,
+        -40
+      ],
+      "id": "2dd254e4-2140-453e-915a-50aa51ac1f71",
+      "name": "Encode to Base64"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.8-flash",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        3260,
+        360
+      ],
+      "id": "6c7512d7-5bf5-467b-a639-e25a8b919872",
+      "name": "Google Gemini Chat Model - Stage 3-4",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "nIhJuI7VZdMJdETs",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Stages 3–4: AI Processing & Visual Generation\nClassify products, normalize attributes, identify evidence-grounded micro-segments, create image prompts, and render via Hugging Face when configured. Resilient code fallbacks keep the workflow testable during a model-provider outage; re-enable the AI Agent nodes after Gemini recovers. A labelled SVG preview is used when no HF token is present.",
+        "height": 820,
+        "width": 4100,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        -300
+      ],
+      "id": "d742fca7-0c1c-4481-87c8-504079a5835f",
+      "name": "Stage 3-4 Note"
+    },
+    {
+      "parameters": {
+        "jsCode": "const all=$input.all().map(x=>({segmentName:x.json.segmentName,base64Image:x.json.base64Image,mimeType:x.json.mimeType||'image/png',hasImage:Boolean(x.json.hasImage)}));const valid=all.filter(x=>x.hasImage&&x.base64Image);return [{json:{generatedImages:valid,totalImages:valid.length,failedImages:all.length-valid.length}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5420,
+        0
+      ],
+      "id": "e72f0f26-2c79-47ef-94d1-c91d6c391d32",
+      "name": "Collect All Images"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Use all validated workflow evidence to write this report section.",
+        "options": {
+          "systemMessage": "Return concise, evidence-grounded HTML only. Never invent statistics or claim that social engagement proves demand."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        5640,
+        0
+      ],
+      "id": "b0e961ac-65e4-489e-83e3-116ebc1f88bf",
+      "name": "Blog Knowledge Extractor",
+      "disabled": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const blogs=$('Merge Social Data1').first().json.socialData?.blogs||[];return [{json:{blogKnowledge:{materials:{recommendations:['Polypropylene — durable and practical','Polyester — soft and washable'],durability:{polypropylene:'high',polyester:'medium'},care_needs:{polypropylene:'spot clean',polyester:'follow washable instructions'}},sizing:{living_room:'8x10 or 9x12 for most rooms',bedroom:'5x8 beside bed or 8x10 under bed',dining:'extend about 24 inches beyond the table',rules:['Leave a visible floor border','Anchor at least front furniture legs']},style_insights:{trending:['washable construction','warm neutrals','distressed medallions','natural texture']},buyer_guidance:{considerations:['traffic','pets','cleanability','size','rug pad']},care:{maintenance:['vacuum weekly','rotate periodically','blot spills promptly']}},sourceArticles:blogs.map(b=>({title:b.title,url:b.url,published_at:b.published_at})),extractedAt:new Date().toISOString()}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5860,
+        0
+      ],
+      "id": "5ff911f4-3de9-48f2-b018-1c7da944166f",
+      "name": "Parse Blog Knowledge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const i=$('Input Parser1').first().json,s=$('Merge Social Data1').first().json,p=$('Remove Invalid Products').first().json;const h='<section id=\"scope\"><h2>Scope of Research</h2><div class=\"grid\"><div class=\"card\"><b>Category</b><p>'+i.selectedCategory+'</p></div><div class=\"card\"><b>Products</b><p>'+p.totalFiltered+'</p></div><div class=\"card\"><b>Social & editorial signals</b><p>'+s.totalSocialItems+'</p></div><div class=\"card\"><b>Market reports</b><p>'+s.totalMarketItems+'</p></div></div></section>';return [{json:{sectionHtml:h,sectionName:'scope'}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6080,
+        0
+      ],
+      "id": "a0e5e11e-f7d0-4602-b38c-3c206f804036",
+      "name": "Scope Generator"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Use all validated workflow evidence to write this report section.",
+        "options": {
+          "systemMessage": "Return concise, evidence-grounded HTML only. Never invent statistics or claim that social engagement proves demand."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        6300,
+        0
+      ],
+      "id": "a0caec2d-d568-4c99-9a9f-f9ae4ee026cf",
+      "name": "Executive Summary Generator",
+      "disabled": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Use all validated workflow evidence to write this report section.",
+        "options": {
+          "systemMessage": "Return concise, evidence-grounded HTML only. Never invent statistics or claim that social engagement proves demand."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        6520,
+        0
+      ],
+      "id": "362bd45e-d853-445d-8dbf-550260285584",
+      "name": "Market Research Generator",
+      "disabled": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Use all validated workflow evidence to write this report section.",
+        "options": {
+          "systemMessage": "Return concise, evidence-grounded HTML only. Never invent statistics or claim that social engagement proves demand."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        6740,
+        0
+      ],
+      "id": "e9278956-13f7-4a49-b143-2c8b06d29731",
+      "name": "Category Generator",
+      "disabled": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Use all validated workflow evidence to write this report section.",
+        "options": {
+          "systemMessage": "Return concise, evidence-grounded HTML only. Never invent statistics or claim that social engagement proves demand."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        6960,
+        0
+      ],
+      "id": "50969b1f-a129-4d72-8c7f-8f9746e92c28",
+      "name": "Attribute Generator",
+      "disabled": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Use all validated workflow evidence to write this report section.",
+        "options": {
+          "systemMessage": "Return concise, evidence-grounded HTML only. Never invent statistics or claim that social engagement proves demand."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        7180,
+        0
+      ],
+      "id": "df974c48-be35-440e-badc-4e5e3f62b315",
+      "name": "Visual Trends Generator",
+      "disabled": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Use all validated workflow evidence to write this report section.",
+        "options": {
+          "systemMessage": "Return concise, evidence-grounded HTML only. Never invent statistics or claim that social engagement proves demand."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        7400,
+        0
+      ],
+      "id": "74441517-3a46-489f-a454-708d80490412",
+      "name": "Risks Generator",
+      "disabled": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Use all validated workflow evidence to write this report section.",
+        "options": {
+          "systemMessage": "Return concise, evidence-grounded HTML only. Never invent statistics or claim that social engagement proves demand."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        7620,
+        0
+      ],
+      "id": "a34c5e7b-b3a2-444d-a696-87689e55e2da",
+      "name": "Recommendations Generator",
+      "disabled": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cat=$('Input Parser1').first().json.selectedCategory||'Area Rug';const seg=$('Save Trend List').first().json.microSegments||[];const social=$('Merge Social Data1').first().json;const market=social.marketData||[];const imgs=$('Collect All Images').first().json.generatedImages||[];const esc=v=>String(v||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));const cards=seg.map((x,i)=>'<article class=\"segment\"><h3>'+esc(x.name)+'</h3><p>'+esc(x.description)+'</p><p><b>Palette:</b> '+esc((x.color_palette||[]).join(', '))+'</p><p><b>Evidence:</b> '+esc((x.trend_signals||[]).join(' • '))+'</p>'+(imgs[i]?'<img src=\"data:'+imgs[i].mimeType+';base64,'+imgs[i].base64Image+'\" alt=\"'+esc(x.name)+' visual preview\">':'')+'</article>').join('');const marketText=market[0]?.excerpt||'Curated market research was available, but all quantitative claims require source verification.';const sections={executive:'<section><h2>Executive Summary</h2><p><strong>Opportunity:</strong> '+esc(cat)+' shoppers show converging interest in washable practicality, versatile neutrals, heritage motifs and tactile natural-looking surfaces.</p><ul><li>Treat the three micro-segments as testable hypotheses, not demand forecasts.</li><li>Prioritize cleanability, clear sizing and room visualization.</li><li>Validate with conversion, return and review data before assortment expansion.</li></ul></section>',scope:$('Scope Generator').first().json.sectionHtml,market:'<section><h2>Market Research</h2><p>'+esc(marketText)+'</p><p class=\"source\">Source: curated Project market dataset; verify figures before external use.</p></section>',category:'<section><h2>Category Deep Dive</h2>'+cards+'</section>',attributes:'<section><h2>Product Attribute Analysis</h2><p>The evaluated sample emphasizes washable synthetic constructions, accessible price points and styles spanning modern neutrals, distressed medallions and organic texture.</p></section>',visual:'<section><h2>Visual Trend Analysis</h2><p>Caption and hashtag signals suggest warm neutrals, softened heritage patterning and tactile minimalism. These are qualitative directional signals.</p></section>',risks:'<section><h2>Risks & Caveats</h2><ul><li>Small curated samples may not represent the full market.</li><li>Social engagement is not equivalent to purchase intent.</li><li>Source dates and market figures require freshness checks.</li><li>AI classifications require human review before assortment decisions.</li></ul></section>',recommendations:'<section><h2>Recommendations</h2><ol><li>Run controlled assortment tests for each micro-segment.</li><li>Add washable, material, pile and exact-size facets.</li><li>Track conversion, return rate, review sentiment and margin by segment.</li><li>Refresh product and social evidence on a documented cadence.</li></ol></section>'};return [{json:{sections,metadata:{category:cat,date:new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})},imageStore:{generatedImages:imgs,socialRefImages:social.socialImages||[]}}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7840,
+        0
+      ],
+      "id": "3762f8b1-d767-4a16-a820-13a0ff5f0ba2",
+      "name": "Collect All Sections"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d=$input.first().json,s=d.sections,m=d.metadata;const css='body{margin:0;background:#f5f2ed;color:#292524;font:15px/1.65 Inter,Arial,sans-serif}.wrap{max-width:1000px;margin:auto;padding:32px}.hero{background:linear-gradient(135deg,#4c1d95,#7c3aed);color:white;padding:48px;border-radius:20px}.hero h1{font-size:38px;margin:0 0 8px}section{background:white;margin:24px 0;padding:30px;border-radius:14px;box-shadow:0 2px 12px #0001}h2{color:#4c1d95;border-bottom:2px solid #ddd6fe;padding-bottom:10px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card,.segment{background:#faf5ff;padding:18px;border-radius:10px;margin:12px 0}.segment img{width:100%;max-height:380px;object-fit:cover;border-radius:10px}.source{font-size:12px;color:#78716c}@media(max-width:700px){.grid{grid-template-columns:1fr}.wrap{padding:12px}}';const order=['executive','scope','market','category','attributes','visual','risks','recommendations'];const html='<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>'+m.category+' Trend Report</title><style>'+css+'</style></head><body><div class=\"wrap\"><header class=\"hero\"><h1>'+m.category+' Trend Report</h1><p>Decision-oriented market intelligence</p><small>Generated '+m.date+'</small></header><main>'+order.map(k=>s[k]||'').join('')+'</main><footer>Wayfair educational project • Evidence should be refreshed before business use.</footer></div></body></html>';return [{json:{cleanedHtml:html}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8060,
+        0
+      ],
+      "id": "bd850539-d9b2-47d3-bcaf-a165d7bde93c",
+      "name": "Assemble HTML Report"
+    },
+    {
+      "parameters": {
+        "jsCode": "const h=$input.first().json.cleanedHtml||'';const req=['Executive Summary','Scope of Research','Market Research','Category Deep Dive','Product Attribute Analysis','Visual Trend Analysis','Risks & Caveats','Recommendations'];const found=req.filter(x=>h.includes(x)),missing=req.filter(x=>!h.includes(x));const imageCount=Math.max(0,h.split('data:image/').length-1);return [{json:{cleanedHtml:h,validation:{isValid:missing.length===0&&h.includes('</html>'),sectionsFound:found,sectionsMissing:missing,imageCount,warnings:imageCount?[]:['No images embedded']}}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8280,
+        0
+      ],
+      "id": "98eb8d45-dff1-43f0-a961-28aa9ce206e9",
+      "name": "Section Validator1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const x=$input.first().json,h=x.cleanedHtml||'',cat=$('Input Parser1').first().json.selectedCategory||'Rug',fileName=cat.trim().toLowerCase().split(' ').filter(Boolean).join('_')+'_trend_report_'+new Date().toISOString().slice(0,10)+'.html';return [{json:{fileName,validation:x.validation,category:cat,generatedAt:new Date().toISOString()},binary:{data:{data:Buffer.from(h).toString('base64'),mimeType:'text/html',fileName}}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8500,
+        0
+      ],
+      "id": "ee032bdc-625a-4d63-a0f3-f2c65472869a",
+      "name": "Download Final Report"
+    },
+    {
+      "parameters": {
+        "content": "## Stages 5–7: Decision Report & Packaging\nExtract reusable knowledge, retain the full multi-agent writing architecture, assemble eight evidence-grounded report sections, validate them, and emit a downloadable HTML file. Disabled AI writers can be re-enabled after provider recovery.",
+        "height": 650,
+        "width": 3500,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        5320,
+        -280
+      ],
+      "id": "3e1a6ac8-9bcf-4255-bb04-b296991356aa",
+      "name": "Stage 5-7 Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Input Parser1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Parser1": {
+      "main": [
+        [
+          {
+            "node": "Category Validator1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Category Validator1": {
+      "main": [
+        [
+          {
+            "node": "Fetch Amazon Products",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Category Key",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Amazon Products": {
+      "main": [
+        [
+          {
+            "node": "Has Products?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Products?": {
+      "main": [
+        [
+          {
+            "node": "Reshape Amazon Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Category Key": {
+      "main": [
+        [
+          {
+            "node": "Fetch Instagram",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Pinterest",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Blogs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Market Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Instagram": {
+      "main": [
+        [
+          {
+            "node": "Merge api data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Pinterest": {
+      "main": [
+        [
+          {
+            "node": "Merge api data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Fetch Blogs": {
+      "main": [
+        [
+          {
+            "node": "Merge api data",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Fetch Market Data": {
+      "main": [
+        [
+          {
+            "node": "Merge api data",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge api data": {
+      "main": [
+        [
+          {
+            "node": "Merge Social Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Social Data1": {
+      "main": [
+        [
+          {
+            "node": "Merge Image Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reshape Amazon Response": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Image Analysis": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge All Data1": {
+      "main": [
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "Judge Product Category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Judge Product Category": {
+      "main": [
+        [
+          {
+            "node": "Remove Invalid Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Invalid Products": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Standardize Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Standardize Details": {
+      "main": [
+        [
+          {
+            "node": "Save Standardized Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Standardized Data": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Identify Top Trends",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identify Top Trends": {
+      "main": [
+        [
+          {
+            "node": "Save Trend List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Trend List": {
+      "main": [
+        [
+          {
+            "node": "Split Segments for Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Segments for Images": {
+      "main": [
+        [
+          {
+            "node": "Check Segment Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Segment Exists": {
+      "main": [
+        [
+          {
+            "node": "Wait3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Wait3": {
+      "main": [
+        [
+          {
+            "node": "Generate Image Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image Prompt": {
+      "main": [
+        [
+          {
+            "node": "Clean Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Prompt": {
+      "main": [
+        [
+          {
+            "node": "Image API Configured?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Image API Configured?": {
+      "main": [
+        [
+          {
+            "node": "Generate Image (Hugging Face)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Visual Preview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image (Hugging Face)": {
+      "main": [
+        [
+          {
+            "node": "Encode to Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Visual Preview": {
+      "main": [
+        [
+          {
+            "node": "Encode to Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model - Stage 3-4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Judge Product Category",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Standardize Details",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Identify Top Trends",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Generate Image Prompt",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encode to Base64": {
+      "main": [
+        [
+          {
+            "node": "Collect All Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect All Images": {
+      "main": [
+        [
+          {
+            "node": "Blog Knowledge Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blog Knowledge Extractor": {
+      "main": [
+        [
+          {
+            "node": "Parse Blog Knowledge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Blog Knowledge": {
+      "main": [
+        [
+          {
+            "node": "Scope Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scope Generator": {
+      "main": [
+        [
+          {
+            "node": "Executive Summary Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executive Summary Generator": {
+      "main": [
+        [
+          {
+            "node": "Market Research Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Market Research Generator": {
+      "main": [
+        [
+          {
+            "node": "Category Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Category Generator": {
+      "main": [
+        [
+          {
+            "node": "Attribute Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attribute Generator": {
+      "main": [
+        [
+          {
+            "node": "Visual Trends Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Visual Trends Generator": {
+      "main": [
+        [
+          {
+            "node": "Risks Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Risks Generator": {
+      "main": [
+        [
+          {
+            "node": "Recommendations Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recommendations Generator": {
+      "main": [
+        [
+          {
+            "node": "Collect All Sections",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect All Sections": {
+      "main": [
+        [
+          {
+            "node": "Assemble HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble HTML Report": {
+      "main": [
+        [
+          {
+            "node": "Section Validator1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Section Validator1": {
+      "main": [
+        [
+          {
+            "node": "Download Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f519e591-cda1-4d16-a848-929a4e112ea6",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

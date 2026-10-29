@@ -1,0 +1,120 @@
+# Wayfair AI Market Intelligence Agent Project
+
+An AI market intelligence project built with **n8n and Google Gemini**. The project includes an importable n8n Prompt Generator that transforms a short rug-design idea into a structured, image-generation-ready moodboard prompt.
+
+This repository contains the project's workflows, documentation, evaluation materials, and generated outputs.
+
+## Current deliverable
+
+`Style idea → n8n Chat Trigger → AI Agent → Google Gemini → structured moodboard prompt`
+
+The system message requires the agent to produce:
+
+- a clear rug subject and design style;
+- color palette and material textures;
+- styled-room context and complementary decor;
+- composition, lighting, and photography direction;
+- negative constraints for cleaner output;
+- one final prompt ready for an image model.
+
+## Repository structure
+
+```text
+.
+├── workflows/
+│   └── prompt-generator-gemini.json
+├── docs/
+│   ├── project-notes.md
+│   └── ai-product-notes.md
+├── evaluation/
+│   └── prompt-evaluation.csv
+├── .env.example
+├── .gitignore
+└── README.md
+```
+
+## Import into n8n
+
+1. Open n8n and choose **Import from File**.
+2. Import `workflows/prompt-generator-gemini.json`.
+3. Open **Google Gemini Chat Model** and create/select a Gemini credential.
+4. Use `models/gemini-3.8-flash`, or select another currently available Gemini chat model in your n8n version.
+5. Open the chat and test a style idea such as:
+
+   `bohemian rugs, neutral tones`
+
+6. Save screenshots of the workflow and generated output for project documentation.
+
+Never commit an API key. Credentials are stored inside n8n; `.env.example` is documentation only.
+
+### Verified local runtime
+
+The workflow was successfully imported with the n8n `2.40.7` CLI. A local self-hosted instance can be kept isolated from the repository by setting `N8N_USER_FOLDER` to `.n8n-local`; both `.n8n-local/` and `.n8n-runtime/` are ignored by Git.
+
+On 27 September 2026, the complete workflow was run successfully against Gemini 3.8 Flash. The original Gemini 2.5 Flash selection returned a deprecation error for new users, so the archived workflow was migrated to the current model. The verified run completed in 6.443 seconds and produced a 459-token prompt.
+
+## Example inputs
+
+- `bohemian rugs, neutral tones`
+- `green botanical rug for a sunlit modern living room`
+
+Project sample outputs and evaluation notes are in [docs/project-notes.md](docs/project-notes.md).
+
+The Project 2 planning artifact is documented in [docs/project-2-step-1.md](docs/project-2-step-1.md), including a four-block workflow sketch for the Area Rugs market-trend agent.
+
+Stages 1-7 of the Market Trend Discovery Agent are available as an importable n8n workflow in [workflows/stage-1-input-routing.json](workflows/stage-1-input-routing.json). Stage 1 implementation notes are in [docs/project-2-step-2.md](docs/project-2-step-2.md), the Amazon product-data stage is documented in [docs/project-2-step-3.md](docs/project-2-step-3.md), the social/industry signal pipeline in [docs/project-2-step-4.md](docs/project-2-step-4.md), the AI processing plus visual-generation stages in [docs/project-2-step-5.md](docs/project-2-step-5.md), and final report generation in [docs/project-2-step-6.md](docs/project-2-step-6.md).
+
+The final Area Rug trend report is in [output/pdf/area-rug-trend-report-2026-09-27.pdf](output/pdf/area-rug-trend-report-2026-09-27.pdf). The verified 53-node run found all 8 required report sections, embedded 3 visual previews and completed with no validation warnings.
+
+Project 3 competitor monitoring Stages 1–4 are available in [workflows/project-3-stage-1-4.json](workflows/project-3-stage-1-4.json), with implementation and test evidence in [docs/project-3-step-2.md](docs/project-3-step-2.md). The verified run collected 10 products each from Wayfair, Amazon and Walmart and merged the three branches into one downstream item.
+
+The complete Project 3 Stages 1–6 agent is available in [workflows/project-3-competitor-monitoring-agent.json](workflows/project-3-competitor-monitoring-agent.json), with implementation decisions and project notes in [docs/project-3-step-3.md](docs/project-3-step-3.md). Its verified 27-node run produced all 7 required sections, passed validation with no missing content or warnings, and supports deterministic evidence-based fallbacks during transient model rate limits. The final five-page report is [output/pdf/wayfair-competitor-monitoring-report.pdf](output/pdf/wayfair-competitor-monitoring-report.pdf).
+
+Project 4 begins with the importable [Content Strategy Agent](workflows/project-4-content-strategy-agent.json). Step 1 adaptation and end-to-end test evidence are documented in [docs/project-4-step-1.md](docs/project-4-step-1.md). The A+B+C enhancement blueprint, node-level changes, evaluation design, and submitted Google Doc are documented in [docs/project-4-step-2.md](docs/project-4-step-2.md).
+
+Project 4 Step 3 is complete. The enhanced nine-node workflow is in [workflows/project-4-enhanced-content-strategy-agent.json](workflows/project-4-enhanced-content-strategy-agent.json), with test evidence, project notes, and a five-minute recording script in [docs/project-4-step-3.md](docs/project-4-step-3.md). Verified execution 32 produced the visually checked 14-page [Wayfair Enhanced Content Strategy Report](output/pdf/wayfair-enhanced-content-strategy-report.pdf), including schema and semantic category-grounding safeguards.
+
+Project 5 Step 1 is documented in [docs/project-5-step-1.md](docs/project-5-step-1.md). The exercise produced a responsive single-file [AI Product Progress Dashboard](sites/ai-product-portfolio-dashboard/dist/index.html), plus the two standalone inputs required by the Dashboard Builder Agent: the [Project 2 market-trend HTML](output/html/area-rug-market-trend-report.html) and [Project 3 competitor-analysis HTML](output/html/wayfair-competitor-analysis-report.html). Project 5 requires no OAuth login, API key, or external credential.
+
+Project 5 Step 2 is complete and documented in [docs/project-5-step-2.md](docs/project-5-step-2.md). The six-node [Dashboard Builder Agent](workflows/project-5-dashboard-builder-agent.json) was imported into n8n and successfully executed with both reports. Its visually verified final output is [Area Rug Dashboard](output/html/Area_Rug_Dashboard_2026-09-27.html), with all official template placeholders resolved.
+
+## Product direction
+
+This first workflow is the input-quality layer of a broader AI market-intelligence product for a rugs category team:
+
+1. consumer trend discovery;
+2. competitor monitoring;
+3. evidence-grounded insight and content generation;
+4. a decision-oriented market intelligence dashboard.
+
+The product framing, metrics, risks, and evaluation plan are documented in [docs/ai-product-notes.md](docs/ai-product-notes.md).
+
+## Status
+
+- [x] Prompt Generator workflow scaffold
+- [x] JSON parsed and imported successfully in n8n 2.40.7
+- [x] System prompt and sample inputs
+- [x] Project documentation draft
+- [x] Initial evaluation rubric
+- [x] Connect the user's Gemini credential in local n8n (credential is not stored in Git)
+- [x] Execute the end-to-end workflow successfully with Gemini 3.8 Flash
+- [x] Capture real n8n output screenshots
+- [x] Record the first actual evaluation result
+- [x] Build the image-generation stage with a Hugging Face branch and credential-free SVG fallback
+- [x] Complete Stages 5-7 report generation, validation and downloadable packaging
+- [x] Generate and visually verify the final five-page PDF report
+- [x] Build and verify Project 3 competitor-monitoring Stages 1–4
+- [x] Complete Project 3 Stages 5–6 analysis, validation and final report delivery
+- [x] Import, adapt, and verify the Project 4 Content Strategy Agent
+- [x] Create and submit the Project 4 enhancement plan
+- [x] Build and test the Project 4 enhancement
+- [x] Export and visually verify the final 14-page PDF report
+- [x] Create the workflow JSON Google Doc
+- [x] Complete Project 5 Step 1 dashboard exercise and prerequisite check
+- [x] Preserve Project 2 and Project 3 reports as standalone HTML inputs
+- [x] Build and import the six-node Project 5 Dashboard Builder Agent
+- [x] Run both HTML reports through the agent successfully
+- [x] Generate and visually verify the final Area Rug category dashboard
+- [ ] Record the required approximately five-minute walkthrough
+- [ ] Set the video and workflow JSON links to anyone-with-link view access
+- [ ] Submit the Project 4 Step 3 form
